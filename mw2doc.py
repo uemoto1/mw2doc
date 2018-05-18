@@ -208,13 +208,12 @@ class Document:
                 alias = m.group(4)[1:]
 
             if m[1] is None:
-                
-                e_title = self.mwapi.escaped_title(title)
-                if e_title in self.database:
-                    if section:
-                        result = "[[%s|%s]]" % (section, alias)
-                    else:
-                        result = "[[%s|%s]]" % (title, alias)
+                if section:
+                    result = "[[%s|%s]]" % (section, alias)
+                else:
+                    e_title = self.mwapi.escaped_title(title)
+                    if e_title in self.database:
+                        result = "[[%s%s|%s]]" % (title, section, alias)
                 else:
                     result = "%s<ref>https://salmon-tddft.jp/wiki/%s</ref>" % (alias, e_title)
 
