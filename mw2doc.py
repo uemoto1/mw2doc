@@ -136,24 +136,24 @@ class Document:
                     self._content_tbl += [(level, title, alias)]
 
     def _get_filetitles(self, pageid):
-        [file_title_list] = self.mwapi.get_images([pageid])
-        file_pageid_list = self.mwapi.get_pageid(file_title_list)
+        [filetitle_list] = self.mwapi.get_images([pageid])
+        file_pageid_list = self.mwapi.get_pageid(filetitle_list)
         temp_title_list, temp_pageid_list = [], []
 
-        for file_title, file_pageid in zip(file_title_list, file_pageid_list):
+        for filetitle, file_pageid in zip(filetitle_list, file_pageid_list):
             if int(file_pageid) > 0:
-                escaped_title = self.mwapi.escaped_title(file_title)
-                temp_title_list += [escaped_title]
+                etitle = self.mwapi.escaped_title(filetitle)
+                temp_title_list += [etitle]
                 temp_pageid_list += [file_pageid]
 
         temp_url_list = self.mwapi.get_image_url(temp_pageid_list)
 
         for temp_title, temp_url in zip(temp_title_list, temp_url_list):
-            self.database[temp_title] = temp_url
+            self.database[temp_title.lower()] = temp_url
 
     def download(self, pardir):
         for title, url in self.database.items():
-            if title.startswith('file:'):
+            if re.match('(file:|media:).*', title, re.I):
                 if title.endswith('.png') or title.endswith('.jpeg'):
                     filename = os.path.join(pardir, url.split('/')[-1])
                     urllib.request.urlretrieve(url, filename)
@@ -182,8 +182,8 @@ class Document:
 
                 [(item, content)] = self.mwapi.get_content([pageid])
                 self._import_page(content, level)
-                escaped_title = self.mwapi.escaped_title(item)
-                self.database[escaped_title] = alias
+                etitle = self.mwapi.escaped_title(item)
+                self.database[etitle.lower()] = alias
 
                 self._get_filetitles(pageid)
 
@@ -192,6 +192,7 @@ class Document:
 
     def export(self):
         ptn_link = re.compile(r"\[\[\s*(media:|file:)?\s*(.*?)\s*(#.*?)?(\|.*?)?\s*\]\]", re.I)
+        self.refs = set([])
         
         def rule(m):
             
@@ -211,27 +212,37 @@ class Document:
                 if section:
                     result = "[[%s|%s]]" % (section, alias)
                 else:
-                    e_title = self.mwapi.escaped_title(title)
-                    if e_title in self.database:
+                    etitle = self.mwapi.escaped_title(title)
+                    if etitle.lower() in self.database:
                         result = "[[%s%s|%s]]" % (title, section, alias)
-                else:
-                    result = "%s<ref>https://salmon-tddft.jp/wiki/%s</ref>" % (alias, e_title)
+                    else:
+                        url = "https://salmon-tddft.jp/wiki/%s" % etitle
+                        if etitle.lower() not in self.refs:
+                            result = '%s<ref name="%s">%s</ref>' % (alias, etitle, url)
+                            self.refs.add(etitle.lower())
+                        else:
+                            result = '%s<ref name="%s" />' % (alias, etitle)
 
             
             else:
-                e_title = self.mwapi.escaped_title(title)
-                if e_title.endswith(".png") or e_title.endswith(".jpeg"):
+                etitle = self.mwapi.escaped_title(title)
+                if etitle.endswith(".png") or etitle.endswith(".jpeg"):
                     result = m[0]
                 else:
-                    result = "%s<ref>https://salmon-tddft.jp/wiki/File:%s</ref>" % (alias, e_title)
-                
+                    url = "https://salmon-tddft.jp/wiki/File:%s" % etitle
+                    if etitle.lower() not in self.refs:
+                        result = '%s<ref name="%s">%s</ref>' % (alias, etitle, url)
+                        self.refs.add(etitle.lower())
+                    else:
+                        result = '%s<ref name="%s" />' % (alias, etitle)
+                    print("---", result)
             return result
         
         
 
         return "\n".join(
             [ptn_link.sub(rule, line) for line in self._buff]
-        )
+        ) 
 
 
 code = """
@@ -251,7 +262,7 @@ def main():
 
     with tempfile.TemporaryDirectory() as tempdir:
         with open(os.path.join(tempdir, 'mediawiki.txt'), 'w') as inpfile:
-            inpfile.write(doc.export())
+            inpfile.write(doc.export()+ "\n==References==\n<references />")
             doc.download(tempdir)
             
         subprocess.call([
