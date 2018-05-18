@@ -45,37 +45,33 @@ class MediaWikiAPI:
         ]
         return result
         
-    def get_contents(self, pageid_list):
+    def get_content(self, pageid_list):
         # Call MediaWiki API
-        result = []
         data = json.loads(self._call_api(
             action='query', format='json',
             prop='revisions', rvprop='content',
             pageids='|'.join(pageid_list)
         ))
         pages = data['query']['pages']
-        for pageid in pageid_list:
-            if 'missing' in pages[pageid]:
-                raise ValueError('PageID "%s" is not found' % pageid)
-            title = pages[pageid]['title']
-            content = pages[pageid]['revisions'][-1]['*']
-            result += [(title, content)]
+        result = [
+            (pages[pageid]['title'],  pages[pageid]['revisions'][-1]['*'])
+            for pageid in pageid_list: 
+        ]
         return result
         
-    def get_images(self, title):
+    def get_images(self, pageid_list):
+        result = set([])
         data = json.loads(self._call_api(
             action='query', format='json',
-            prop='images', titles=title
+            prop='images', pageids="|".join(pageid_list)
         ))
         pages = data['query']['pages']
-        page = pages[pages.keys()[0]]
-        title = page['title']
-        if 'missing' in page:
-            raise ValueError('Page "%s" is not found' % title)
-        for revision in page['revisions']:
-            content = revision['*']
-        return title, content
-
+        for pageid in pageid_list:
+            result (
+                set([item['title'] for item in pages[pageid]['images']])
+            )
+        return list(result)
+        
     def save_uploaded_file(self, title, filename):
         special_page = "%s?Special:Filepath/%s" % (self.index_php, title)
         with urllib.request.urlopen(special_page) as response:
