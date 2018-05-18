@@ -4,6 +4,8 @@ import urllib.request
 import urllib.parse
 import json
 import re
+import sys
+import os.path
 
 
 class MediaWikiAPI:
@@ -11,10 +13,10 @@ class MediaWikiAPI:
     def __init__(self, wikiroot):
         self.api_php = urllib.request.urljoin(wikiroot, "api.php")
         self.index_php = urllib.request.urljoin(wikiroot, "index.php")
-    
-    def _escaped_title(self, title):
+
+    def escaped_title(self, title):
         return '_'.join([
-            item.capitalize() for item in re.split(r"\s+", title)
+            item.lower() for item in re.split(r"\s+", title)
         ])
 
     def _call_api(self, **kwargs):
@@ -25,21 +27,14 @@ class MediaWikiAPI:
                 raise ValueError('Fail to connect "%s"' % self.api_php)
             data = response.read()
         return data
-    
-    def _download(self, url, filename):
-        with open(filename, 'wb') as fh:
-            with urllib.response.urlopen(url) as response:
-                if response.getcode() != 200:
-                    raise ValueError('Fail to connect "%s"' % url)
-                fh.write(response.read())
-    
+
     def get_pageid(self, title_list):
         data = json.loads(self._call_api(
             action='query', format='json',
             titles='|'.join(title_list)
         ))
         normalized_table = {
-            item['from']: item['to'] 
+            item['from']: item['to']
             for item in data['query'].get('normalized', {})
         }
         pageid_table = {
@@ -51,7 +46,7 @@ class MediaWikiAPI:
             for title in title_list
         ]
         return result
-        
+
     def get_content(self, pageid_list):
         # Call MediaWiki API
         data = json.loads(self._call_api(
@@ -65,7 +60,7 @@ class MediaWikiAPI:
             for pageid in pageid_list
         ]
         return result
-        
+
     def get_images(self, pageid_list):
         data = json.loads(self._call_api(
             action='query', format='json',
@@ -78,7 +73,7 @@ class MediaWikiAPI:
             for pageid in pageid_list
         ]
         return result
-        
+
     def get_image_url(self, pageid_list):
         data = json.loads(self._call_api(
             action='query', format='json',
@@ -91,64 +86,110 @@ class MediaWikiAPI:
             for pageid in pageid_list
         ]
         return result
-    
-    
+
 
 class Document:
 
-    ptn_link = re.compile(r"([#\*]+)\s*(\[\[(.+?)(\|.+?)?\]\]|.+)")
-    ptn_contents = re.compile(r"=+\s*Contents\s*=+", re.IGNORECASE)
-    ptn_level = re.compile("(=+)\s*(.*?)\s*(=+)")
+    ptn_content = re.compile(r"([#\*]+)\s*(\[\[(.+?)(\|.+?)?\]\]|.+)")
+    ptn_heading = re.compile("(=+)\s*(.*?)\s*(=+)")
 
-    def _parse_child_page(self, code, baselevel=1):
-        buff = []
+    def __init__(self, mediawiki, title='', keyword='Contents'):
+        self.mwapi = mediawiki
+        self.keyword = keyword
+        self.root_title = title 
+        self._content_tbl = []
+        self._buff = []
+
+    def _import_page(self, code, baselevel=2):
         for line in code.splitlines():
-            result = ptn_level.match(line.strip())
-            if result:
-                level = len(result.group(1))
-                title = result.group(2)
+            m_heading = self.ptn_heading.search(line.strip())
+            if m_heading:
+                level = len(m_heading.group(1))
+                title = m_heading.group(2)
                 tag = "=" * (level + baselevel - 1)
-                buff += [" ".join([tag, title, tag])]
-            else:
-                buff += [line.rstrip()]
-        return buff
+                self._buff += [" ".join([tag, title, tag])]
+                continue
+            self._buff += [line.rstrip()]
 
-    def _read_root_page(self, code):
-        state = 0
-        header, content_tbl, footer = [], [], []
+    def _parse_content_tbl(self, code):
+        self.content_tbl = []
+        parse_flag = False
         for line in code.splitlines():
-
-            if state == 0:
-                if ptn_key.search(line):
-                    state = 1
-                else:
-                    header += [line]
+            m_heading = self.ptn_heading.search(line)
+            if m_heading:
+                parse_flag = (m_heading.group(2) == self.keyword)
                 continue
-
-            elif state == 1:
-
-                result = ptn_link.match(line.strip())
-                if result:
-                    level = len(result.group(1)) + 1
-                    if result.group(3) is None:
-                        page = ""
-                        title = result.group(2).strip()
-                    elif result.group(4) is None:
-                        page = result.group(3).strip()
-                        title = page
+            if parse_flag:
+                m_content = self.ptn_content.search(line)
+                if m_content:
+                    level = len(m_content.group(1)) + 1
+                    if m_content.group(3) is None:
+                        title = ""
+                        name = m_content.group(2).strip()
+                    elif m_content.group(4) is None:
+                        title = m_content.group(3).strip()
+                        name = title
                     else:
-                        page = result.group(3).strip()
-                        title = result.group(4).strip()
-                    content_tbl += [(level, page, title)]
-                else:
-                    state = 2
-                continue
+                        title = m_content.group(3).strip()
+                        name = m_content.group(4).strip()
+                    self._content_tbl += [(level, title, name)]
+    
+    def _get_filetitles(self, pageid):
+        [file_title_list] = self.mwapi.get_images([pageid])
+        file_pageid_list = self.mwapi.get_pageid(file_title_list)
+        temp_title_list, temp_pageid_list = [], []
+        
+        for file_title, file_pageid in zip(file_title_list, file_pageid_list):
+            if int(file_pageid) > 0:
+                escaped_title = self.mwapi.escaped_title(file_title)
+                temp_title_list += [escaped_title]
+                temp_pageid_list += [file_pageid]
+        
+        temp_url_list =  self.mwapi.get_image_url(temp_pageid_list)
+        
+        for temp_title, temp_url in zip(temp_title_list, temp_url_list):
+            self.database[temp_title] = temp_url
+        
+                
 
-            elif state == 2:
-                footer += [line]
-                continue
-
-        return header, content_tbl, footer
+    def download(self, pardir):
+        for title, url in self.database.items():
+            if title.startswith('file:'):
+                if title.endswith('.png') or title.endswith('.jpeg'):
+                    filename = os.path.join(pardir, url.split('/')[-1])
+                    urllib.request.urlretrieve(url, filename)
+                    sys.stdout.write("%s>%s" % (url, filename))
+        
+    
+    def generate(self, code=''):
+        
+        if not code:
+            [root_pageid] = self.mwapi.get_pageid([self.root_title])
+            [(_, code)] = self.mwapi.get_content([root_pageid])
+        
+        self._parse_content_tbl(code)
+        
+        self.database = {}
+        
+        for level, title, name in self._content_tbl:
+            tag = '=' * level
+            self._buff += [' '.join([tag, name, tag])]
+            if title:
+                sys.stdout.write("R: %s\n" % title)
+                [pageid] = self.mwapi.get_pageid([title])
+                
+                if int(pageid) < 0:
+                    sys.stdout.write("E: %s\n" % title)
+                    sys.exit(-1)
+                     
+                [(item, content)] = self.mwapi.get_content([pageid])
+                self._import_page(content, level)
+                escaped_title = self.mwapi.escaped_title(item)
+                self.database[escaped_title] = name
+                
+                self._get_filetitles(pageid)
+                    
+    
 
 
 def main():
