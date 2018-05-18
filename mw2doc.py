@@ -26,6 +26,13 @@ class MediaWikiAPI:
             data = response.read()
         return data
     
+    def _download(self, url, filename):
+        with open(filename, 'wb') as fh:
+            with urllib.response.urlopen(url) as response:
+                if response.getcode() != 200:
+                    raise ValueError('Fail to connect "%s"' % url)
+                fh.write(response.read())
+    
     def get_pageid(self, title_list):
         data = json.loads(self._call_api(
             action='query', format='json',
@@ -55,30 +62,37 @@ class MediaWikiAPI:
         pages = data['query']['pages']
         result = [
             (pages[pageid]['title'],  pages[pageid]['revisions'][-1]['*'])
-            for pageid in pageid_list: 
+            for pageid in pageid_list
         ]
         return result
         
     def get_images(self, pageid_list):
-        result = set([])
         data = json.loads(self._call_api(
             action='query', format='json',
-            prop='images', pageids="|".join(pageid_list)
+            prop='images', imlimit=999,
+            pageids="|".join(pageid_list)
         ))
         pages = data['query']['pages']
-        for pageid in pageid_list:
-            result (
-                set([item['title'] for item in pages[pageid]['images']])
-            )
-        return list(result)
+        result = [
+            [item['title'] for item in pages[pageid].get('images', {})]
+            for pageid in pageid_list
+        ]
+        return result
         
-    def save_uploaded_file(self, title, filename):
-        special_page = "%s?Special:Filepath/%s" % (self.index_php, title)
-        with urllib.request.urlopen(special_page) as response:
-            with open(filename, "wb") as fh:
-                fh.write(response.read())
-
-#api.php?action=query&titles=File:Albert%20Einstein%20Head.jpg&prop=imageinfo&&iiprop=ur
+    def get_image_url(self, pageid_list):
+        data = json.loads(self._call_api(
+            action='query', format='json',
+            prop='imageinfo', iiprop='url',
+            pageids="|".join(pageid_list)
+        ))
+        pages = data['query']['pages']
+        result = [
+            pages[pageid]['imageinfo'][-1]['url']
+            for pageid in pageid_list
+        ]
+        return result
+    
+    
 
 class Document:
 
