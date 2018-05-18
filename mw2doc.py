@@ -6,6 +6,8 @@ import json
 import re
 import sys
 import os.path
+import tempfile
+import subprocess
 
 
 class MediaWikiAPI:
@@ -96,7 +98,7 @@ class Document:
     def __init__(self, mediawiki, title='', keyword='Contents'):
         self.mwapi = mediawiki
         self.keyword = keyword
-        self.root_title = title 
+        self.root_title = title
         self._content_tbl = []
         self._buff = []
 
@@ -133,24 +135,22 @@ class Document:
                         title = m_content.group(3).strip()
                         name = m_content.group(4).strip()
                     self._content_tbl += [(level, title, name)]
-    
+
     def _get_filetitles(self, pageid):
         [file_title_list] = self.mwapi.get_images([pageid])
         file_pageid_list = self.mwapi.get_pageid(file_title_list)
         temp_title_list, temp_pageid_list = [], []
-        
+
         for file_title, file_pageid in zip(file_title_list, file_pageid_list):
             if int(file_pageid) > 0:
                 escaped_title = self.mwapi.escaped_title(file_title)
                 temp_title_list += [escaped_title]
                 temp_pageid_list += [file_pageid]
-        
-        temp_url_list =  self.mwapi.get_image_url(temp_pageid_list)
-        
+
+        temp_url_list = self.mwapi.get_image_url(temp_pageid_list)
+
         for temp_title, temp_url in zip(temp_title_list, temp_url_list):
             self.database[temp_title] = temp_url
-        
-                
 
     def download(self, pardir):
         for title, url in self.database.items():
@@ -158,42 +158,69 @@ class Document:
                 if title.endswith('.png') or title.endswith('.jpeg'):
                     filename = os.path.join(pardir, url.split('/')[-1])
                     urllib.request.urlretrieve(url, filename)
-                    sys.stdout.write("%s>%s" % (url, filename))
-        
-    
+                    sys.stdout.write("%s\n->%s" % (url, filename))
+
     def generate(self, code=''):
-        
+
         if not code:
             [root_pageid] = self.mwapi.get_pageid([self.root_title])
             [(_, code)] = self.mwapi.get_content([root_pageid])
-        
+
         self._parse_content_tbl(code)
-        
+
         self.database = {}
-        
+
         for level, title, name in self._content_tbl:
             tag = '=' * level
             self._buff += [' '.join([tag, name, tag])]
             if title:
                 sys.stdout.write("R: %s\n" % title)
                 [pageid] = self.mwapi.get_pageid([title])
-                
+
                 if int(pageid) < 0:
                     sys.stdout.write("E: %s\n" % title)
                     sys.exit(-1)
-                     
+
                 [(item, content)] = self.mwapi.get_content([pageid])
                 self._import_page(content, level)
                 escaped_title = self.mwapi.escaped_title(item)
                 self.database[escaped_title] = name
-                
+
                 self._get_filetitles(pageid)
-                    
-    
+
+
+
+
+    def export(self):
+
+        return "\n".join(self._buff)
+
+
+code = """
+
+
+== Contents == 
+# Theoretical Background
+## [[Samples]]
+"""
 
 
 def main():
-    pass
+
+    mw = MediaWikiAPI("https://salmon-tddft.jp/mediawiki/api.php")
+    doc = Document(mw)
+    doc.generate(code)
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        with open(os.path.join(tempdir, 'mediawiki.txt'), 'w') as inpfile:
+            inpfile.write(doc.export())
+            doc.download(tempdir)
+            
+        subprocess.call([
+            'pandoc', '-f', 'mediawiki',
+            '-i', inpfile.name,
+            '-o', sys.argv[1]
+        ])
 
 
 if __name__ == '__main__':
