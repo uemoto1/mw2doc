@@ -127,14 +127,14 @@ class Document:
                     level = len(m_content.group(1)) + 1
                     if m_content.group(3) is None:
                         title = ""
-                        name = m_content.group(2).strip()
+                        alias = m_content.group(2).strip()
                     elif m_content.group(4) is None:
                         title = m_content.group(3).strip()
-                        name = title
+                        alias = title
                     else:
                         title = m_content.group(3).strip()
-                        name = m_content.group(4).strip()
-                    self._content_tbl += [(level, title, name)]
+                        alias = m_content.group(4).strip()
+                    self._content_tbl += [(level, title, alias)]
 
     def _get_filetitles(self, pageid):
         [file_title_list] = self.mwapi.get_images([pageid])
@@ -170,9 +170,9 @@ class Document:
 
         self.database = {}
 
-        for level, title, name in self._content_tbl:
+        for level, title, alias in self._content_tbl:
             tag = '=' * level
-            self._buff += [' '.join([tag, name, tag])]
+            self._buff += [' '.join([tag, alias, tag])]
             if title:
                 sys.stdout.write("R: %s\n" % title)
                 [pageid] = self.mwapi.get_pageid([title])
@@ -184,7 +184,7 @@ class Document:
                 [(item, content)] = self.mwapi.get_content([pageid])
                 self._import_page(content, level)
                 escaped_title = self.mwapi.escaped_title(item)
-                self.database[escaped_title] = name
+                self.database[escaped_title] = alias
 
                 self._get_filetitles(pageid)
 
