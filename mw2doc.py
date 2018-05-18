@@ -16,10 +16,6 @@ class MediaWikiAPI:
         self.api_php = urllib.request.urljoin(wikiroot, "api.php")
         self.index_php = urllib.request.urljoin(wikiroot, "index.php")
 
-    def escaped_title(self, title):
-        return '_'.join([
-            item.lower() for item in re.split(r"\s+", title)
-        ])
 
     def _call_api(self, **kwargs):
         api_args = urllib.parse.urlencode(kwargs).encode('utf-8')
@@ -49,6 +45,9 @@ class MediaWikiAPI:
         ]
         return result
 
+    def escaped_title(self, title):
+        return re.sub(r"\s+", "_", title)
+        
     def get_content(self, pageid_list):
         # Call MediaWiki API
         data = json.loads(self._call_api(
@@ -192,8 +191,48 @@ class Document:
 
 
     def export(self):
+        ptn_link = re.compile(r"\[\[\s*(media:|file:)?\s*(.*?)\s*(#.*?)?(\|.*?)?\s*\]\]", re.I)
+        
+        def rule(m):
+            
+            title = m[2]
+            
+            if m[3] is None:
+                section = ""
+            else:
+                section = m[3]
+            
+            if m.group(4) is None:
+                alias = title
+            else:
+                alias = m.group(4)[1:]
 
-        return "\n".join(self._buff)
+            if m[1] is None:
+                
+                e_title = self.mwapi.escaped_title(title)
+                if e_title in self.database:
+                    if section:
+                        result = "[[%s|%s]]" % (section, alias)
+                    else:
+                        result = "[[%s|%s]]" % (title, alias)
+                else:
+                    result = "%s<ref>https://salmon-tddft.jp/wiki/%s</ref>" % (alias, e_title)
+
+            
+            else:
+                e_title = self.mwapi.escaped_title(title)
+                if e_title.endswith(".png") or e_title.endswith(".jpeg"):
+                    result = m[0]
+                else:
+                    result = "%s<ref>https://salmon-tddft.jp/wiki/File:%s</ref>" % (alias, e_title)
+                
+            return result
+        
+        
+
+        return "\n".join(
+            [ptn_link.sub(rule, line) for line in self._buff]
+        )
 
 
 code = """
