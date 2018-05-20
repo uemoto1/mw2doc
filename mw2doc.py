@@ -11,18 +11,25 @@ import http.cookiejar
 import urllib.request
 import urllib.parse
 
+# Default Configuration File
+#  This_Directory/config/default.json
+CONFIG_DEFAULT_JSON = os.path.join(
+    os.path.dirname(__file__),
+    'config', 'default.json'
+)
+
 
 class MediaWikiAPI:
 
-    def __init__(self, wikiroot):
-        self.api_php = urllib.request.urljoin(wikiroot, "api.php")
+    def __init__(self, wiki_api):
+        self.wiki_api = wiki_api
         self.opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
         )
 
-    def _call_api(self, **kwargs):
+    def call_api(self, **kwargs):
         api_args = urllib.parse.urlencode(kwargs).encode('utf-8')
-        data = json.loads(self.opener.open(self.api_php, api_args).read())
+        data = json.loads(self.opener.open(self.wiki_api, api_args).read())
         if 'info' in data:
             sys.stderr.write('[INFO] %s\n' % data['info'])
         if 'warnings' in data:
@@ -33,11 +40,11 @@ class MediaWikiAPI:
         return data
 
     def login(self, username, password):
-        token = self._call_api(
+        token = self.call_api(
             action='login', format='json',
             lgname=username,
         )
-        data = self._call_api(
+        data = self.call_api(
             action='login', format='json',
             lgname=username, lgpassword=password,
             lgtoken=token['login']['token']
@@ -51,7 +58,7 @@ class MediaWikiAPI:
             sys.exit(-1)
 
     def get_pageid(self, title_list):
-        data = self._call_api(
+        data = self.call_api(
             action='query', format='json',
             titles='|'.join(title_list)
         )
@@ -74,7 +81,7 @@ class MediaWikiAPI:
 
     def get_content(self, pageid_list):
         # Call MediaWiki API
-        data = self._call_api(
+        data = self.call_api(
             action='query', format='json',
             prop='revisions', rvprop='content',
             pageids='|'.join(pageid_list)
@@ -87,7 +94,7 @@ class MediaWikiAPI:
         return result
 
     def get_images(self, pageid_list):
-        data = self._call_api(
+        data = self.call_api(
             action='query', format='json',
             prop='images', imlimit=500,
             pageids="|".join(pageid_list)
@@ -100,7 +107,7 @@ class MediaWikiAPI:
         return result
 
     def get_image_url(self, pageid_list):
-        data = self._call_api(
+        data = self.call_api(
             action='query', format='json',
             prop='imageinfo', iiprop='url',
             pageids="|".join(pageid_list)
@@ -183,28 +190,33 @@ class Document:
                     filename = os.path.join(pardir, url.split('/')[-1])
                     urllib.request.urlretrieve(url, filename)
                     filename_list += [filename]
+                    sys.stderr.write('[SUCCESS] Download "%s"\n' % filename)
+
 
     def generate(self, code=''):
 
         if not code:
             [root_pageid] = self.mwapi.get_pageid([self.root_title])
-            [(_, code)] = self.mwapi.get_content([root_pageid])
+            [(root_title, code)] = self.mwapi.get_content([root_pageid])
+            sys.stderr.write('[SUCCESS] Retrieve "%s"\n' % root_title)
 
         self._parse_content_tbl(code)
 
         self.database = {}
 
         for level, title, alias in self._content_tbl:
-            tag = '=' * level
+            tag = '=' * (level - 1)
+            sys.stderr.write('[ENTER] H%d "%s"\n' % (level, alias))
             self._buff += [' '.join([tag, alias, tag])]
             if title:
-                sys.stdout.write("R: %s\n" % title)
                 [pageid] = self.mwapi.get_pageid([title])
 
                 if int(pageid) < 0:
-                    sys.stdout.write("E: %s\n" % title)
+                    sys.stderr.write('[ERROR] "%s" is Not Found\n' % title)
                     sys.exit(-1)
 
+                sys.stderr.write('[SUCCESS] Retrieve "%s"\n' % title)
+                
                 [(item, content)] = self.mwapi.get_content([pageid])
                 self._import_page(content, level)
                 etitle = self.mwapi.escaped_title(item)
@@ -251,14 +263,6 @@ class Document:
         ) + "\n=References=\n"
 
 
-code = """
-
-
-== Contents == 
-# Theoretical Background
-## [[Samples|Sample Codes]]
-"""
-
 
 def main():
 
@@ -271,10 +275,16 @@ def main():
                       default=os.curdir, help="Output Directory")
     parser.add_option("-q", "--quiet", dest="quiet",
                       default=False, action="store_true", help="No Message")
+    parser.add_option("-c", "--config", dest="config",
+                      default=CONFIG_DEFAULT_JSON, action="store_true", 
+                      help="Configulation File")
     opts, args = parser.parse_args()
-
-    mwapi = MediaWikiAPI("https://salmon-tddft.jp/mediawiki/api.php")
     
+    with open(opts.config) as fh_config:
+        config = json.load(fh_config)
+
+    mwapi = MediaWikiAPI(config['wiki_api'])
+
     if opts.username:
         # Request Password
         if opts.password:
@@ -283,14 +293,17 @@ def main():
             password = getpass.getpass()
         # Login
         mwapi.login(opts.username, password)
-    
+
     doc = Document(mwapi)
-    doc.generate(code)
+    doc.keyword = config['keyword']
+    doc.root_title = config['root_title']
+    doc.generate()
 
     with tempfile.TemporaryDirectory() as tempdir:
         file_mw = os.path.join(tempdir, 'document.mw')
         file_tex = os.path.join(tempdir, 'document.tex')
         file_docx = os.path.join(tempdir, 'document.docx')
+        file_pdf = os.path.join(tempdir, 'document.pdf')
 
         with open(file_mw, 'w') as fh_mw:
             fh_mw.write(doc.export())
@@ -301,18 +314,21 @@ def main():
             '-f', 'mediawiki',
             '-i', file_mw,
             '-o', file_tex,
-            '-s',
             '--table-of-contents',
             '--number-sections',
+            '-s',
         ], cwd=tempdir)
 
         subprocess.call([
             'pandoc',
-            '-f', 'mediawiki',
-            '-i', file_mw,
-            '-o', file_docx,
+            '-i', file_tex,
+            '-o', file_pdf,
+            '--toc',
+            "-s",
+            '-N',
         ], cwd=tempdir)
-        os.rename(file_docx, "output.docx")
+        os.rename(file_tex, "output.tex")
+        os.rename(file_pdf, "output.pdf")
 
 
 if __name__ == '__main__':
