@@ -1,0 +1,37 @@
+\documentclass[a4paper]{article}
+
+\ifx\XeTeXversion\undefined
+  % Evironment Specific Setting for "uplatex"
+  \usepackage[dvipdfmx, breaklinks]{hyperref}
+  \usepackage{pxjahyper}
+\else
+  % Evironment Specific Setting for "xelatex"
+  \usepackage[breaklinks]{hyperref}
+\fi
+
+\hypersetup{
+  colorlinks = true,
+  linkcolor = blue,
+  citecolor = blue,
+  filecolor = blue,
+  urlcolor = blue,
+}
+
+\title{TITLE}
+\date{\today}
+\author{Author}
+
+\begin{document}
+
+\maketitle
+{\tableofcontents}
+
+
+
+
+
+
+
+
+
+\end{document}
