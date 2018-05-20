@@ -1,36 +1,60 @@
 #!/usr/bin/env python3
-
-import urllib.request
-import urllib.parse
-import json
-import re
 import sys
 import os.path
+import re
+import json
 import tempfile
 import subprocess
+import getpass
+import optparse
+import http.cookiejar
+import urllib.request
+import urllib.parse
 
 
 class MediaWikiAPI:
 
     def __init__(self, wikiroot):
         self.api_php = urllib.request.urljoin(wikiroot, "api.php")
-        self.index_php = urllib.request.urljoin(wikiroot, "index.php")
-
+        self.opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+        )
 
     def _call_api(self, **kwargs):
         api_args = urllib.parse.urlencode(kwargs).encode('utf-8')
-        request = urllib.request.Request(self.api_php, api_args)
-        with urllib.request.urlopen(request) as response:
-            if response.getcode() != 200:
-                raise ValueError('Fail to connect "%s"' % self.api_php)
-            data = response.read()
+        data = json.loads(self.opener.open(self.api_php, api_args).read())
+        if 'info' in data:
+            sys.stderr.write('[INFO] %s\n' % data['info'])
+        if 'warnings' in data:
+            sys.stderr.write('[WARNINGS] %s\n' % data['warnings'])
+        if 'error' in data:
+            sys.stderr.write('[ERROR] %s\n' % data['error'])
+            sys.exit(-1)
         return data
 
+    def login(self, username, password):
+        token = self._call_api(
+            action='login', format='json',
+            lgname=username,
+        )
+        data = self._call_api(
+            action='login', format='json',
+            lgname=username, lgpassword=password,
+            lgtoken=token['login']['token']
+        )
+        if data['login']['result'] == 'Success':
+            sys.stderr.write('[SUCCESS] Login as "%s" (%d)\n' % (
+                data['login']['lgusername'], data['login']['lguserid']
+            ))
+        else:
+            sys.stderr.write('[ERROR] Password Rejected\n')
+            sys.exit(-1)
+
     def get_pageid(self, title_list):
-        data = json.loads(self._call_api(
+        data = self._call_api(
             action='query', format='json',
             titles='|'.join(title_list)
-        ))
+        )
         normalized_table = {
             item['from']: item['to']
             for item in data['query'].get('normalized', {})
@@ -47,14 +71,14 @@ class MediaWikiAPI:
 
     def escaped_title(self, title):
         return re.sub(r"\s+", "_", title)
-        
+
     def get_content(self, pageid_list):
         # Call MediaWiki API
-        data = json.loads(self._call_api(
+        data = self._call_api(
             action='query', format='json',
             prop='revisions', rvprop='content',
             pageids='|'.join(pageid_list)
-        ))
+        )
         pages = data['query']['pages']
         result = [
             (pages[pageid]['title'],  pages[pageid]['revisions'][-1]['*'])
@@ -63,11 +87,11 @@ class MediaWikiAPI:
         return result
 
     def get_images(self, pageid_list):
-        data = json.loads(self._call_api(
+        data = self._call_api(
             action='query', format='json',
-            prop='images', imlimit=999,
+            prop='images', imlimit=500,
             pageids="|".join(pageid_list)
-        ))
+        )
         pages = data['query']['pages']
         result = [
             [item['title'] for item in pages[pageid].get('images', {})]
@@ -76,11 +100,11 @@ class MediaWikiAPI:
         return result
 
     def get_image_url(self, pageid_list):
-        data = json.loads(self._call_api(
+        data = self._call_api(
             action='query', format='json',
             prop='imageinfo', iiprop='url',
             pageids="|".join(pageid_list)
-        ))
+        )
         pages = data['query']['pages']
         result = [
             pages[pageid]['imageinfo'][-1]['url']
@@ -105,8 +129,8 @@ class Document:
         for line in code.splitlines():
             m_heading = self.ptn_heading.search(line.strip())
             if m_heading:
-                level = len(m_heading.group(1))
-                title = m_heading.group(2)
+                level = len(m_heading[1])
+                title = m_heading[2]
                 tag = "=" * (level + baselevel - 1)
                 self._buff += [" ".join([tag, title, tag])]
                 continue
@@ -151,13 +175,14 @@ class Document:
         for temp_title, temp_url in zip(temp_title_list, temp_url_list):
             self.database[temp_title.lower()] = temp_url
 
-    def download(self, pardir):
+    def download_figs(self, pardir):
+        filename_list = []
         for title, url in self.database.items():
             if re.match('(file:|media:).*', title, re.I):
                 if title.endswith('.png') or title.endswith('.jpeg'):
                     filename = os.path.join(pardir, url.split('/')[-1])
                     urllib.request.urlretrieve(url, filename)
-                    sys.stdout.write("%s\n->%s" % (url, filename))
+                    filename_list += [filename]
 
     def generate(self, code=''):
 
@@ -187,27 +212,21 @@ class Document:
 
                 self._get_filetitles(pageid)
 
-
-
-
     def export(self):
-        ptn_link = re.compile(r"\[\[\s*(media:|file:)?\s*(.*?)\s*(#.*?)?(\|.*?)?\s*\]\]", re.I)
+        ptn_link = re.compile(
+            r"\[\[\s*(media:|file:)?\s*(.*?)\s*(#.*?)?(\|.*?)?\s*\]\]", re.I)
         self.refs = set([])
-        
+
         def rule(m):
-            
             title = m[2]
-            
             if m[3] is None:
                 section = ""
             else:
                 section = m[3]
-            
             if m.group(4) is None:
                 alias = title
             else:
                 alias = m.group(4)[1:]
-
             if m[1] is None:
                 if section:
                     result = "[[%s|%s]]" % (section, alias)
@@ -217,32 +236,19 @@ class Document:
                         result = "[[%s%s|%s]]" % (title, section, alias)
                     else:
                         url = "https://salmon-tddft.jp/wiki/%s" % etitle
-                        if etitle.lower() not in self.refs:
-                            result = '%s<ref name="%s">%s</ref>' % (alias, etitle, url)
-                            self.refs.add(etitle.lower())
-                        else:
-                            result = '%s<ref name="%s" />' % (alias, etitle)
-
-            
+                        result = '%s<ref>%s</ref>' % (alias, url)
             else:
                 etitle = self.mwapi.escaped_title(title)
                 if etitle.endswith(".png") or etitle.endswith(".jpeg"):
-                    result = m[0]
+                    result = "[[File:%s]]" % title
                 else:
                     url = "https://salmon-tddft.jp/wiki/File:%s" % etitle
-                    if etitle.lower() not in self.refs:
-                        result = '%s<ref name="%s">%s</ref>' % (alias, etitle, url)
-                        self.refs.add(etitle.lower())
-                    else:
-                        result = '%s<ref name="%s" />' % (alias, etitle)
-                    print("---", result)
+                    result = '%s<ref>%s</ref>' % (alias, url)
             return result
-        
-        
 
         return "\n".join(
             [ptn_link.sub(rule, line) for line in self._buff]
-        ) 
+        ) + "\n=References=\n"
 
 
 code = """
@@ -250,26 +256,63 @@ code = """
 
 == Contents == 
 # Theoretical Background
-## [[Samples]]
+## [[Samples|Sample Codes]]
 """
 
 
 def main():
 
-    mw = MediaWikiAPI("https://salmon-tddft.jp/mediawiki/api.php")
-    doc = Document(mw)
+    parser = optparse.OptionParser()
+    parser.add_option("-u", "--username", dest="username",
+                      default="", type=str, help="Login User")
+    parser.add_option("-p", "--password", dest="password",
+                      default="", type=str, help="Login Password")
+    parser.add_option("-o", "--outdir", dest="outdir",
+                      default=os.curdir, help="Output Directory")
+    parser.add_option("-q", "--quiet", dest="quiet",
+                      default=False, action="store_true", help="No Message")
+    opts, args = parser.parse_args()
+
+    mwapi = MediaWikiAPI("https://salmon-tddft.jp/mediawiki/api.php")
+    
+    if opts.username:
+        # Request Password
+        if opts.password:
+            password = opts.password
+        else:
+            password = getpass.getpass()
+        # Login
+        mwapi.login(opts.username, password)
+    
+    doc = Document(mwapi)
     doc.generate(code)
 
     with tempfile.TemporaryDirectory() as tempdir:
-        with open(os.path.join(tempdir, 'mediawiki.txt'), 'w') as inpfile:
-            inpfile.write(doc.export()+ "\n==References==\n<references />")
-            doc.download(tempdir)
-            
+        file_mw = os.path.join(tempdir, 'document.mw')
+        file_tex = os.path.join(tempdir, 'document.tex')
+        file_docx = os.path.join(tempdir, 'document.docx')
+
+        with open(file_mw, 'w') as fh_mw:
+            fh_mw.write(doc.export())
+            doc.download_figs(tempdir)
+
         subprocess.call([
-            'pandoc', '-f', 'mediawiki',
-            '-i', inpfile.name,
-            '-o', sys.argv[1]
-        ])
+            'pandoc',
+            '-f', 'mediawiki',
+            '-i', file_mw,
+            '-o', file_tex,
+            '-s',
+            '--table-of-contents',
+            '--number-sections',
+        ], cwd=tempdir)
+
+        subprocess.call([
+            'pandoc',
+            '-f', 'mediawiki',
+            '-i', file_mw,
+            '-o', file_docx,
+        ], cwd=tempdir)
+        os.rename(file_docx, "output.docx")
 
 
 if __name__ == '__main__':
