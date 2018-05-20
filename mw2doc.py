@@ -12,10 +12,9 @@ import urllib.request
 import urllib.parse
 
 # Default Configuration File
-#  This_Directory/config/default.json
+#  This_Directory/default.json
 CONFIG_DEFAULT_JSON = os.path.join(
-    os.path.dirname(__file__),
-    'config', 'default.json'
+    os.path.dirname(__file__), 'default.json'
 )
 
 
@@ -192,7 +191,6 @@ class Document:
                     filename_list += [filename]
                     sys.stderr.write('[SUCCESS] Download "%s"\n' % filename)
 
-
     def generate(self, code=''):
 
         if not code:
@@ -216,7 +214,7 @@ class Document:
                     sys.exit(-1)
 
                 sys.stderr.write('[SUCCESS] Retrieve "%s"\n' % title)
-                
+
                 [(item, content)] = self.mwapi.get_content([pageid])
                 self._import_page(content, level)
                 etitle = self.mwapi.escaped_title(item)
@@ -263,23 +261,21 @@ class Document:
         ) + "\n=References=\n"
 
 
-
 def main():
-
     parser = optparse.OptionParser()
     parser.add_option("-u", "--username", dest="username",
                       default="", type=str, help="Login User")
     parser.add_option("-p", "--password", dest="password",
                       default="", type=str, help="Login Password")
-    parser.add_option("-o", "--outdir", dest="outdir",
+    parser.add_option("-o", "--out-dir", dest="outdir",
                       default=os.curdir, help="Output Directory")
-    parser.add_option("-q", "--quiet", dest="quiet",
-                      default=False, action="store_true", help="No Message")
+    parser.add_option("-d", "--export-docx", dest="docx",
+                      default=False, action="store_true", help="Create docx file")
     parser.add_option("-c", "--config", dest="config",
-                      default=CONFIG_DEFAULT_JSON, action="store_true", 
+                      default=CONFIG_DEFAULT_JSON, action="store_true",
                       help="Configulation File")
     opts, args = parser.parse_args()
-    
+
     with open(opts.config) as fh_config:
         config = json.load(fh_config)
 
@@ -299,36 +295,31 @@ def main():
     doc.root_title = config['root_title']
     doc.generate()
 
-    with tempfile.TemporaryDirectory() as tempdir:
-        file_mw = os.path.join(tempdir, 'document.mw')
-        file_tex = os.path.join(tempdir, 'document.tex')
-        file_docx = os.path.join(tempdir, 'document.docx')
-        file_pdf = os.path.join(tempdir, 'document.pdf')
+    file_mw = os.path.join(opts.outdir, 'document.mw')
+    file_tex = os.path.join(opts.outdir, 'document.tex')
+    file_docx = os.path.join(opts.outdir, 'document.docx')
 
-        with open(file_mw, 'w') as fh_mw:
-            fh_mw.write(doc.export())
-            doc.download_figs(tempdir)
+    with open(file_mw, 'w') as fh_mw:
+        fh_mw.write(doc.export())
+        doc.download_figs(opts.outdir)
 
+    subprocess.call([
+        'pandoc',
+        '-f', 'mediawiki',
+        '-i', file_mw,
+        '-o', file_tex,
+        '--data-dir=%s' % opts.outdir,
+    ])
+
+    if opts.docx:
         subprocess.call([
             'pandoc',
             '-f', 'mediawiki',
             '-i', file_mw,
             '-o', file_tex,
-            '--table-of-contents',
-            '--number-sections',
-            '-s',
-        ], cwd=tempdir)
-
-        subprocess.call([
-            'pandoc',
-            '-i', file_tex,
-            '-o', file_pdf,
-            '--toc',
-            "-s",
-            '-N',
-        ], cwd=tempdir)
-        os.rename(file_tex, "output.tex")
-        os.rename(file_pdf, "output.pdf")
+            '-N', '-s', '--toc',
+            '--data-dir=%s' % opts.outdir,
+        ])
 
 
 if __name__ == '__main__':
