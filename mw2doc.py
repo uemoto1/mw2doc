@@ -61,6 +61,7 @@ class MediaWikiAPI:
             action='query', format='json',
             titles='|'.join(title_list)
         )
+        print(data)
         normalized_table = {
             item['from']: item['to']
             for item in data['query'].get('normalized', {})
@@ -137,7 +138,7 @@ class Document:
             if m_heading:
                 level = len(m_heading[1])
                 title = m_heading[2]
-                tag = "=" * (level + baselevel - 1)
+                tag = "=" * (level + baselevel - 2)
                 self._buff += [" ".join([tag, title, tag])]
                 continue
             self._buff += [line.rstrip()]
@@ -167,6 +168,9 @@ class Document:
 
     def _get_filetitles(self, pageid):
         [filetitle_list] = self.mwapi.get_images([pageid])
+        if len(filetitle_list) == 0:
+            return
+            
         file_pageid_list = self.mwapi.get_pageid(filetitle_list)
         temp_title_list, temp_pageid_list = [], []
 
