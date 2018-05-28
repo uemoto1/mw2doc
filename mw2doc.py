@@ -148,26 +148,20 @@ class Document:
 
     def _parse_content_tbl(self, code):
         self.content_tbl = []
-        parse_flag = False
         for line in code.splitlines():
-            m_heading = self.ptn_heading.search(line)
-            if m_heading:
-                parse_flag = (m_heading.group(2) == self.keyword)
-                continue
-            if parse_flag:
-                m_content = self.ptn_content.search(line)
-                if m_content:
-                    level = len(m_content.group(1)) + 1
-                    if m_content.group(3) is None:
-                        title = ""
-                        alias = m_content.group(2).strip()
-                    elif m_content.group(4) is None:
-                        title = m_content.group(3).strip()
-                        alias = title
-                    else:
-                        title = m_content.group(3).strip()
-                        alias = m_content.group(4)[1:].strip()
-                    self._content_tbl += [(level, title, alias)]
+            m_content = self.ptn_content.search(line)
+            if m_content:
+                level = len(m_content.group(1)) + 1
+                if m_content.group(3) is None:
+                    title = ""
+                    newtitle = m_content.group(2).strip()
+                elif m_content.group(4) is None:
+                    title = m_content.group(3).strip()
+                    newtitle = title
+                else:
+                    title = m_content.group(3).strip()
+                    newtitle = m_content.group(4)[1:].strip()
+                self._content_tbl += [(level, title, newtitle)]
 
     def _get_filetitles(self, pageid):
         [filetitle_list] = self.mwapi.get_images([pageid])
@@ -209,10 +203,10 @@ class Document:
 
         self.database = {}
 
-        for level, title, alias in self._content_tbl:
+        for level, title, newtitle in self._content_tbl:
             tag = '=' * (level - 1)
-            sys.stderr.write('[ENTER] H%d "%s"\n' % (level, alias))
-            self._buff += [' '.join([tag, alias, tag])]
+            sys.stderr.write('[ENTER] H%d "%s"\n' % (level, newtitle))
+            self._buff += [' '.join([tag, newtitle, tag])]
             if title:
                 [pageid] = self.mwapi.get_pageid([title])
 
@@ -225,7 +219,7 @@ class Document:
                 [(item, content)] = self.mwapi.get_content([pageid])
                 self._import_page(content, level)
                 etitle = self.mwapi.escaped_title(item)
-                self.database[etitle.lower()] = alias
+                self.database[etitle.lower()] = newtitle
 
                 self._get_filetitles(pageid)
 
@@ -241,16 +235,16 @@ class Document:
             else:
                 section = m[3]
             if m.group(4) is None:
-                alias = title
+                newtitle = title
             else:
-                alias = m.group(4)[1:]
+                newtitle = m.group(4)[1:]
             if m[1] is None:
                 if section:
-                    result = "[[%s|%s]]" % (section, alias)
+                    result = "[[%s|%s]]" % (section, newtitle)
                 else:
                     etitle = self.mwapi.escaped_title(title)
                     if etitle.lower() in self.database:
-                        result = "[[%s%s|%s]]" % (title, section, alias)
+                        result = "[[%s%s|%s]]" % (title, section, newtitle)
                     else:
                         url = self.wiki_prefix + etitle
                         result = url
@@ -296,7 +290,6 @@ def main():
         mwapi.login(opts.username, password)
 
     doc = Document(mwapi)
-    doc.keyword = config['keyword']
     doc.wiki_prefix = config['wiki_prefix']
     doc.root_title = config['root_title']
     doc.generate()
