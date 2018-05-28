@@ -12,7 +12,7 @@ import urllib.request
 import urllib.parse
 
 # Default Configuration File
-#  This_Directory/default.json
+#  ./default.json
 CONFIG_DEFAULT_JSON = os.path.join(
     os.path.dirname(__file__), 'default.json'
 )
@@ -120,6 +120,9 @@ class MediaWikiAPI:
         return result
 
 
+
+
+
 class Document:
 
     ptn_content = re.compile(r"([#\*]+)\s*(\[\[(.+?)(\|.+?)?\]\]|.+)")
@@ -163,7 +166,7 @@ class Document:
                         alias = title
                     else:
                         title = m_content.group(3).strip()
-                        alias = m_content.group(4).strip()
+                        alias = m_content.group(4)[1:].strip()
                     self._content_tbl += [(level, title, alias)]
 
     def _get_filetitles(self, pageid):
@@ -273,14 +276,12 @@ def main():
                       default="", type=str, help="Login Password")
     parser.add_option("-o", "--out-dir", dest="outdir",
                       default=os.curdir, help="Output Directory")
-    parser.add_option("-d", "--export-docx", dest="docx",
-                      default=False, action="store_true", help="Create docx file")
-    parser.add_option("-c", "--config", dest="config",
+    parser.add_option("-i", "--input", dest="inputfile",
                       default=CONFIG_DEFAULT_JSON, action="store_true",
                       help="Configulation File")
     opts, args = parser.parse_args()
 
-    with open(opts.config) as fh_config:
+    with open(opts.inputfile) as fh_config:
         config = json.load(fh_config)
 
     mwapi = MediaWikiAPI(config['wiki_api'])
@@ -296,13 +297,14 @@ def main():
 
     doc = Document(mwapi)
     doc.keyword = config['keyword']
+    doc.wiki_prefix = config['wiki_prefix']
     doc.root_title = config['root_title']
     doc.generate()
 
     file_mw = os.path.join(opts.outdir, 'document.mw')
     file_tex = os.path.join(opts.outdir, 'document.tex')
-    file_docx = os.path.join(opts.outdir, 'document.docx')
 
+    
     with open(file_mw, 'w') as fh_mw:
         fh_mw.write(doc.export())
         doc.download_figs(opts.outdir)
@@ -314,16 +316,15 @@ def main():
         '-o', file_tex,
         '--data-dir=%s' % opts.outdir,
     ])
+    
+    file_template = os.path.join(os.path.dirname(__file__), config["template"])
+    with open(file_template) as fh_template:
+        template = fh_template.read()
+        
+    with open(file_tex, "w") as fh_tex:
+        fh_tex.write(template.replace("%%BODY%%", doc.export()))
 
-    if opts.docx:
-        subprocess.call([
-            'pandoc',
-            '-f', 'mediawiki',
-            '-i', file_mw,
-            '-o', file_tex,
-            '-N', '-s', '--toc',
-            '--data-dir=%s' % opts.outdir,
-        ])
+    sys.stderr.write("# Bye")
 
 
 if __name__ == '__main__':
