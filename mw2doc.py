@@ -252,15 +252,15 @@ class Document:
                     if etitle.lower() in self.database:
                         result = "[[%s%s|%s]]" % (title, section, alias)
                     else:
-                        url = "https://salmon-tddft.jp/wiki/%s" % etitle
-                        result = '%s<ref>%s</ref>' % (alias, url)
+                        url = self.wiki_prefix + etitle
+                        result = url
             else:
                 etitle = self.mwapi.escaped_title(title)
                 if etitle.endswith(".png") or etitle.endswith(".jpeg"):
                     result = "[[File:%s]]" % title
                 else:
-                    url = "https://salmon-tddft.jp/wiki/File:%s" % etitle
-                    result = '%s<ref>%s</ref>' % (alias, url)
+                    url = self.wiki_prefix +  "File:" + etitle
+                    result = url
             return result
 
         return "\n".join(
@@ -321,8 +321,13 @@ def main():
     with open(file_template) as fh_template:
         template = fh_template.read()
         
+    with open(file_tex, "r") as fh_tex:
+        tex_body = fh_tex.read()
+    
     with open(file_tex, "w") as fh_tex:
-        fh_tex.write(template.replace("%%BODY%%", doc.export()))
+        fh_tex.write(template.replace("%%BODY%%", tex_body))
+    
+    
 
     sys.stderr.write("# Bye")
 
