@@ -13,7 +13,7 @@ import urllib.parse
 
 # Default Configuration File
 #  ./default.json
-CONFIG_DEFAULT_JSON = os.path.join(
+DEFAULT_JSON = os.path.join(
     os.path.dirname(__file__), 'default.json'
 )
 
@@ -262,6 +262,19 @@ class Document:
         ) + "\n=References=\n"
 
 
+def get_account_info(opts):
+    if opts.username:
+        username = opts.username
+    else:
+        username = input("Username: ")
+    if opts.password:
+        password = opts.password
+    else:
+        password = getpass.getpass()
+    return username, password
+    
+
+
 def main():
     parser = optparse.OptionParser()
     parser.add_option("-u", "--username", dest="username",
@@ -271,7 +284,7 @@ def main():
     parser.add_option("-o", "--out-dir", dest="outdir",
                       default=os.curdir, help="Output Directory")
     parser.add_option("-i", "--input", dest="inputfile",
-                      default=CONFIG_DEFAULT_JSON, action="store_true",
+                      default=DEFAULT_JSON, action="store_true",
                       help="Configulation File")
     opts, args = parser.parse_args()
 
@@ -280,14 +293,10 @@ def main():
 
     mwapi = MediaWikiAPI(config['wiki_api'])
 
-    if opts.username:
-        # Request Password
-        if opts.password:
-            password = opts.password
-        else:
-            password = getpass.getpass()
-        # Login
-        mwapi.login(opts.username, password)
+    # Login
+    sys.stderr.write("# Connecting to %s\n" % config['wiki_api'])
+    username, password = get_account_info(opts)
+    mwapi.login(username, password)
 
     doc = Document(mwapi)
     doc.wiki_prefix = config['wiki_prefix']
@@ -297,10 +306,10 @@ def main():
     file_mw = os.path.join(opts.outdir, 'document.mw')
     file_tex = os.path.join(opts.outdir, 'document.tex')
 
-    
     with open(file_mw, 'w') as fh_mw:
         fh_mw.write(doc.export())
         doc.download_figs(opts.outdir)
+    sys.stderr.write('[SUCCESS] Write -> %s\n' % file_mw)
 
     subprocess.call([
         'pandoc',
@@ -309,20 +318,26 @@ def main():
         '-o', file_tex,
         '--data-dir=%s' % opts.outdir,
     ])
+    sys.stderr.write('[SUCCESS] Pandoc %s -> %s\n' % (file_mw, file_tex))
     
-    file_template = os.path.join(os.path.dirname(__file__), config["template"])
-    with open(file_template) as fh_template:
+    file_template_tex = os.path.join(
+        os.path.dirname(opts.inputfile), config["template_tex"]
+    )
+
+    with open(file_template_tex) as fh_template:
         template = fh_template.read()
+    sys.stderr.write('[SUCCESS] Load <- %s\n' % (file_template_tex))
+
         
     with open(file_tex, "r") as fh_tex:
         tex_body = fh_tex.read()
     
     with open(file_tex, "w") as fh_tex:
         fh_tex.write(template.replace("%%BODY%%", tex_body))
-    
+    sys.stderr.write('[SUCCESS] Postprocess -> %s\n' % (file_tex))
     
 
-    sys.stderr.write("# Bye")
+    sys.stderr.write("%s\n" % ('='*40))
 
 
 if __name__ == '__main__':
