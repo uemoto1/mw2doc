@@ -22,7 +22,7 @@ If necessary, users can rewrite `default.json` for their environment.
 ```
 {
    "wiki_api": "https://salmon-tddft.jp/mediawiki/api.php",
-   "wiki_ prefix": "https://salmon-tddft.jp/wiki/",
+   "wiki_prefix": "https://salmon-tddft.jp/wiki/",
    "rootpage_title": "DevOnly: New_Manual",
    "template_tex": "template.tex"
 }
@@ -31,8 +31,8 @@ The input file is structured in standard JSON format ().
 Each item of the top-level dictionary object has been shown in the table:
 
 | Key        | Detail           | 
-| ------------- |:-------------:| 
-| `wiki_api` | URI to `api.phi` | 
+| ------------- | ------------- | 
+| `wiki_api` | URI to mediawiki web api (`api.php`) | 
 | `wiki_prefix` | URI prefix to mediawiki pages | 
 | `rootpage_title` | title of the page having the table of contents | 
 | `template_tex` | path to the template file of tex output |
