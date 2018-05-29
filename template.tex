@@ -2,12 +2,23 @@
 \def\tightlist{\itemsep1pt\parskip0pt\parsep0pt}
 
 \ifx\XeTeXversion\undefined
-  % Evironment Specific Setting for "uplatex"
-  \usepackage[dvipdfmx, breaklinks]{hyperref}
-  \usepackage{pxjahyper}
+\ifx\pdffontexpand\undefined
+
+% Evironment Specific Setting for "uplatex"
+\usepackage[dvipdfmx, breaklinks]{hyperref}
+\usepackage{pxjahyper}
+
 \else
-  % Evironment Specific Setting for "xelatex"
-  \usepackage[breaklinks]{hyperref}
+
+% Evironment Specific Setting for "pdflatex"
+\usepackage[breaklinks]{hyperref}
+
+\fi
+\else
+
+% Evironment Specific Setting for "xelatex"
+\usepackage[breaklinks]{hyperref}
+
 \fi
 
 \hypersetup{
