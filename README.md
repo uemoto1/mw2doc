@@ -17,6 +17,11 @@ python3 mw2doc.py
 ```
 The program asks your username and password to the editor account of the wiki.
 
+Finally, the program outputs `document.tex` file if successfully finished.
+
+
+### Input file
+
 By default, this program reads `default.json` as an input file.
 If necessary, users can rewrite `default.json` for their environment.
 ```
@@ -32,7 +37,7 @@ Each item of the top-level dictionary object has been shown in the table:
 
 | Key        | Detail           | 
 | ------------- | ------------- | 
-| `wiki_api` | URI to mediawiki web api (`api.php`) | 
+| `wiki_api` | URI to mediawiki web-api (`api.php`) | 
 | `wiki_prefix` | URI prefix to mediawiki pages | 
 | `rootpage_title` | title of the page having the table of contents | 
 | `template_tex` | path to the template file of tex output |
@@ -40,5 +45,5 @@ Each item of the top-level dictionary object has been shown in the table:
 To use an your own input file, specify the `-i` option to execute.
 For example, if you create `mydoc.json` based on a copy of` default.json`, enter:
 ```
-python3 mw2doc.py - i mydoc.json
+python3 mw2doc.py -i mydoc.json
 ```
