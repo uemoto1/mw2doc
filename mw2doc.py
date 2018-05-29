@@ -131,7 +131,7 @@ class Document:
     def __init__(self, mediawiki, title='', keyword='Contents'):
         self.mwapi = mediawiki
         self.keyword = keyword
-        self.root_title = title
+        self.rootpage_title = title
         self._content_tbl = []
         self._buff = []
 
@@ -195,9 +195,9 @@ class Document:
     def generate(self, code=''):
 
         if not code:
-            [root_pageid] = self.mwapi.get_pageid([self.root_title])
-            [(root_title, code)] = self.mwapi.get_content([root_pageid])
-            sys.stderr.write('[SUCCESS] Retrieve "%s"\n' % root_title)
+            [root_pageid] = self.mwapi.get_pageid([self.rootpage_title])
+            [(rootpage_title, code)] = self.mwapi.get_content([root_pageid])
+            sys.stderr.write('[SUCCESS] Retrieve "%s"\n' % rootpage_title)
 
         self._parse_content_tbl(code)
 
@@ -300,7 +300,7 @@ def main():
 
     doc = Document(mwapi)
     doc.wiki_prefix = config['wiki_prefix']
-    doc.root_title = config['root_title']
+    doc.rootpage_title = config['rootpage_title']
     doc.generate()
 
     file_mw = os.path.join(opts.outdir, 'document.mw')
