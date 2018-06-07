@@ -1,6 +1,6 @@
 {
   "wiki_api": "https://salmon-tddft.jp/mediawiki/api.php",
   "wiki_prefix": "https://salmon-tddft.jp/wiki/",
-  "rootpage_title": "DevOnly:New_Manual",
+  "rootpage_title": "DevOnly:Manual for SALMON-v.1.0.0",
   "template_tex": "template.tex"
 }
