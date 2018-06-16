@@ -19,16 +19,24 @@ DEFAULT_JSON = os.path.join(
 
 
 class MediaWikiAPI:
+    """Connection to MediaWiki API"""
 
     def __init__(self, wiki_api):
+        """Initialization of variables used in the connection"""
+        
         self.wiki_api = wiki_api
         self.opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
         )
 
+
+
     def call_api(self, **kwargs):
+        """Connect and call MediaWiki's web API"""
+        
         api_args = urllib.parse.urlencode(kwargs).encode('utf-8')
         data = json.loads(self.opener.open(self.wiki_api, api_args).read())
+        # Error messages:
         if 'info' in data:
             sys.stderr.write('[INFO] %s\n' % data['info'])
         if 'warnings' in data:
@@ -38,7 +46,11 @@ class MediaWikiAPI:
             sys.exit(-1)
         return data
 
+
+
     def login(self, username, password):
+        """Login to MediaWiki with the specified username and password"""
+        
         token = self.call_api(
             action='login', format='json',
             lgname=username,
@@ -56,12 +68,15 @@ class MediaWikiAPI:
             sys.stderr.write('[ERROR] Password Rejected\n')
             sys.exit(-1)
 
+
+
     def get_pageid(self, title_list):
+        """Acquire the page ID in MediaWiki from the page title"""
+        
         data = self.call_api(
             action='query', format='json',
             titles='|'.join(title_list)
         )
-        print(data)
         normalized_table = {
             item['from']: item['to']
             for item in data['query'].get('normalized', {})
@@ -76,11 +91,18 @@ class MediaWikiAPI:
         ]
         return result
 
+
+
     def escaped_title(self, title):
+        """Create a title escaping whitespace with an underscore character"""
+        
         return re.sub(r"\s+", "_", title)
 
+
+
     def get_content(self, pageid_list):
-        # Call MediaWiki API
+        """Download the source code of specified page by using MediaWiki API"""
+        
         data = self.call_api(
             action='query', format='json',
             prop='revisions', rvprop='content',
@@ -93,7 +115,11 @@ class MediaWikiAPI:
         ]
         return result
 
+
+
     def get_images(self, pageid_list):
+        """Acquire the list of image files included in the page"""
+        
         data = self.call_api(
             action='query', format='json',
             prop='images', imlimit=500,
@@ -105,8 +131,12 @@ class MediaWikiAPI:
             for pageid in pageid_list
         ]
         return result
+        
+        
 
     def get_image_url(self, pageid_list):
+        """Acquire the download URL for image files included in the page"""
+        
         data = self.call_api(
             action='query', format='json',
             prop='imageinfo', iiprop='url',
@@ -121,12 +151,10 @@ class MediaWikiAPI:
 
 
 
-
-
 class Document:
 
     ptn_content = re.compile(r"([#\*]+)\s*(\[\[(.+?)(\|.+?)?\]\]|.+)")
-    ptn_heading = re.compile("(=+)\s*(.*?)\s*(=+)")
+    ptn_heading = re.compile("\s*(=+)\s*(.*?)\s*(=+)\s*")
 
     def __init__(self, mediawiki, title='', keyword='Contents'):
         self.mwapi = mediawiki
@@ -137,7 +165,7 @@ class Document:
 
     def _import_page(self, code, baselevel=2):
         for line in code.splitlines():
-            m_heading = self.ptn_heading.search(line.strip())
+            m_heading = self.ptn_heading.match(line.strip())
             if m_heading:
                 level = len(m_heading[1])
                 title = m_heading[2]
@@ -154,14 +182,14 @@ class Document:
                 level = len(m_content.group(1)) + 1
                 if m_content.group(3) is None:
                     title = ""
-                    newtitle = m_content.group(2).strip()
+                    doc_title = m_content.group(2).strip()
                 elif m_content.group(4) is None:
                     title = m_content.group(3).strip()
-                    newtitle = title
+                    doc_title = title
                 else:
                     title = m_content.group(3).strip()
-                    newtitle = m_content.group(4)[1:].strip()
-                self._content_tbl += [(level, title, newtitle)]
+                    doc_title = m_content.group(4)[1:].strip()
+                self._content_tbl += [(level, title, doc_title)]
 
     def _get_filetitles(self, pageid):
         [filetitle_list] = self.mwapi.get_images([pageid])
@@ -203,11 +231,11 @@ class Document:
 
         self.database = {}
 
-        for level, title, newtitle in self._content_tbl:
+        for level, title, doc_title in self._content_tbl:
             tag = '=' * (level - 1)
-            sys.stderr.write('[ENTER] H%d "%s"\n' % (level, newtitle))
-            self._buff += [' '.join([tag, newtitle, tag])]
+            sys.stderr.write('[ENTER] H%d "%s"\n' % (level, doc_title))
             if title:
+                self._buff += [' '.join([tag, doc_title, tag])]
                 [pageid] = self.mwapi.get_pageid([title])
 
                 if int(pageid) < 0:
@@ -219,7 +247,7 @@ class Document:
                 [(item, content)] = self.mwapi.get_content([pageid])
                 self._import_page(content, level)
                 etitle = self.mwapi.escaped_title(item)
-                self.database[etitle.lower()] = newtitle
+                self.database[etitle.lower()] = doc_title
 
                 self._get_filetitles(pageid)
 
@@ -235,16 +263,16 @@ class Document:
             else:
                 section = m[3]
             if m.group(4) is None:
-                newtitle = title
+                doc_title = title
             else:
-                newtitle = m.group(4)[1:]
+                doc_title = m.group(4)[1:]
             if m[1] is None:
                 if section:
-                    result = "[[%s|%s]]" % (section, newtitle)
+                    result = "[[%s|%s]]" % (section, doc_title)
                 else:
                     etitle = self.mwapi.escaped_title(title)
                     if etitle.lower() in self.database:
-                        result = "[[%s%s|%s]]" % (title, section, newtitle)
+                        result = "[[%s%s|%s]]" % (title, section, doc_title)
                     else:
                         url = self.wiki_prefix + etitle
                         result = url
