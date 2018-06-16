@@ -9,18 +9,19 @@
 \usepackage{pxjahyper}
 
 \else
-
 % Evironment Specific Setting for "pdflatex"
 \usepackage[breaklinks]{hyperref}
 
 \fi
 \else
-
 % Evironment Specific Setting for "xelatex"
 \usepackage[breaklinks]{hyperref}
 
 \fi
 
+% Common section for uplatex/pdflatex/xelatex
+\usepackage{longtable,booktabs}
+\usepackage{textcomp}
 \hypersetup{
   colorlinks = true,
   linkcolor = blue,
