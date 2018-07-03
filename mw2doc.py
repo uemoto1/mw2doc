@@ -126,7 +126,7 @@ class MediaWikiAPI:
 class Document:
 
     ptn_content = re.compile(r"([#\*]+)\s*(\[\[(.+?)(\|.+?)?\]\]|.+)")
-    ptn_heading = re.compile("(=+)\s*(.*?)\s*(=+)")
+    ptn_heading = re.compile(r"^\s*(=+)\s*(.*?)\s*(=+)\s*$")
 
     def __init__(self, mediawiki, title='', keyword='Contents'):
         self.mwapi = mediawiki
