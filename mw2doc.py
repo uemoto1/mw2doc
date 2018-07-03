@@ -333,7 +333,7 @@ def main():
         tex_body = fh_tex.read()
     
     with open(file_tex, "w") as fh_tex:
-        fh_tex.write(template.replace("%%BODY%%", tex_body))
+        fh_tex.write(template.replace("%%BODY%%", tex_body).replace("&amp;", "&"))
     sys.stderr.write('[SUCCESS] Postprocess -> %s\n' % (file_tex))
     
 
